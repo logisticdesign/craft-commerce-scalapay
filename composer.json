@@ -1,0 +1,42 @@
+{
+    "name": "logisticdesign/commerce-scalapay",
+    "description": "Scalapay payment gateway for Craft Commerce",
+    "type": "craft-plugin",
+    "version": "1.0.0",
+    "keywords": [
+        "commerce",
+        "craftcms",
+        "scalapay",
+        "yii2"
+    ],
+    "support": {
+        "docs": "https://github.com/logisticdesign/commerce-scalapay/blob/master/README.md",
+        "issues": "https://github.com/logisticdesign/commerce-scalapay/issues"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Logistic Design srl",
+            "homepage": "https://logisticdesign.it"
+        }
+    ],
+    "require": {
+        "craftcms/cms": "^3.1.5",
+        "craftcms/commerce": "^2.0|^3.0",
+        "scalapay/scalapay": "^1.1"
+    },
+    "autoload": {
+        "psr-4": {
+          "logisticdesign\\scalapay\\": "src/"
+        }
+    },
+    "extra": {
+        "name": "Scalapay for Craft Commerce",
+        "handle": "commerce-scalapay",
+        "developer": "Logistic Design srl",
+        "developerUrl": "https://logisticdesign.it",
+        "documentationUrl": "https://github.com/logisticdesign/commerce-scalapay/blob/master/README.md",
+        "changelogUrl": "https://raw.githubusercontent.com/logisticdesign/commerce-scalapay/master/CHANGELOG.md",
+        "class": "logisticdesign\\scalapay\\Scalapay"
+    }
+}
