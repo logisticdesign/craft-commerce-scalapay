@@ -15,6 +15,7 @@ use Craft;
 use craft\commerce\base\Gateway;
 use craft\commerce\base\RequestResponseInterface;
 use craft\commerce\elements\Order;
+use craft\commerce\elements\Variant;
 use craft\commerce\errors\NotImplementedException;
 use craft\commerce\errors\PaymentException;
 use craft\commerce\models\payments\BasePaymentForm;
@@ -85,7 +86,7 @@ class ScalapayGateway extends Gateway
      */
     public function getSettingsHtml()
     {
-        return Craft::$app->getView()->renderTemplate('commerce-scalapay/settings', [
+        return Craft::$app->getView()->renderTemplate('craft-commerce-scalapay/settings', [
             'gateway' => $this,
         ]);
     }
@@ -306,119 +307,80 @@ class ScalapayGateway extends Gateway
         $billingAddress = $order->getBillingAddress();
         $shippingAddress = $order->getShippingAddress();
 
-        // API Auth
-        $authorization = new \Scalapay\Scalapay\Model\Merchant\Authorization(
-            \Scalapay\Scalapay\Model\Merchant\Authorization::SANDBOX_URI,
-            \Scalapay\Scalapay\Model\Merchant\Authorization::APIKEY
-        );
+        $billingName = $billingAddress->businessName ?: "{$billingAddress->firstName} {$billingAddress->lastName}";
+        $shippingName = $shippingAddress->businessName ?: "{$shippingAddress->firstName} {$shippingAddress->lastName}";
 
-        // Customer information
-        $consumer = new \Scalapay\Scalapay\Model\Merchant\Consumer();
-        $consumer->setEmail($order->email);
-        $consumer->setGivenNames($billingAddress->firstName);
-        $consumer->setSurname($billingAddress->lastName);
-
-        // Billing
-        $billing = new \Scalapay\Scalapay\Model\Merchant\Contact();
-        $billing->setName("{$billingAddress->firstName} {$billingAddress->lastName}");
-        $billing->setLine1($billingAddress->address1);
-        $billing->setPostcode($billingAddress->zipCode);
-        $billing->setState($billingAddress->city);
-        $billing->setCountryCode('IT');
-
-        // Shipping
-        $shipping = new \Scalapay\Scalapay\Model\Merchant\Contact();
-        $shipping->setName("{$shippingAddress->firstName} {$shippingAddress->lastName}");
-        $shipping->setLine1($shippingAddress->address1);
-        $shipping->setPostcode($shippingAddress->zipCode);
-        $shipping->setState($shippingAddress->city);
-        $shipping->setCountryCode('IT');
-
-        // Items
-        $itemList = [];
+        $items = [];
 
         foreach ($order->getLineItems() as $lineItem) {
-            $item = new \Scalapay\Scalapay\Model\Merchant\Item();
-            $item->setName($lineItem->getDescription());
-            $item->setSku($lineItem->getSku());
-            $item->setQuantity($lineItem->qty);
+            $category = '';
+            $purchasable = $lineItem->getPurchasable();
 
-            $itemPrice = new \Scalapay\Scalapay\Model\Merchant\Money();
-            $itemPrice->setAmount($lineItem->getTotal());
+            if ($purchasable instanceof Variant) {
+                $category = $purchasable->product->tipologia->one()->title ?? '';
+            }
 
-            $item->setPrice($itemPrice);
-
-            $itemList[] = $item;
+            $items[] = [
+                'sku' => $lineItem->getSku(),
+                'name' => $lineItem->getDescription(),
+                'quantity' => $lineItem->qty,
+                'category' => $category,
+                'price' => [
+                    'amount' => strval($lineItem->getTotal()),
+                    'currency' => $lineItem->defaultCurrency,
+                ],
+            ];
         }
 
-        // Confirm & failure URLS
-        $merchantOptions = new \Scalapay\Scalapay\Model\Merchant\MerchantOptions();
-        $merchantOptions->setRedirectCancelUrl(UrlHelper::url($order->cancelUrl));
-        $merchantOptions->setRedirectConfirmUrl(UrlHelper::url($order->returnUrl));
+        $data = [
+            'merchantReference' => $order->number,
 
-        // Order total
-        $totalAmount = new \Scalapay\Scalapay\Model\Merchant\Money();
-        $totalAmount->setAmount($order->getTotal());
+            'totalAmount' => [
+                'amount' => strval($order->total),
+                'currency' => $order->currency,
+            ],
+            'consumer' => [
+                'email' => $order->email,
+                'surname' => $billingAddress->lastName,
+                'givenNames' => $billingAddress->firstName,
+            ],
+            'billing' => [
+                'name' => $billingName,
+                'line1' => $billingAddress->address1,
+                'suburb' => $billingAddress->city,
+                'postcode' => $billingAddress->zipCode,
+                'countryCode' => $billingAddress->countryIso,
+                'phoneNumber' => $billingAddress->phone,
+            ],
+            'shipping' => [
+                'name' => $shippingName,
+                'line1' => $shippingAddress->address1,
+                'suburb' => $shippingAddress->city,
+                'postcode' => $shippingAddress->zipCode,
+                'countryCode' => $shippingAddress->countryIso,
+                'phoneNumber' => $shippingAddress->phone,
+            ],
+            'items' => $items,
+            'merchant' => [
+                'redirectCancelUrl' => UrlHelper::url($order->cancelUrl),
+                'redirectConfirmUrl' => $this->getWebhookUrl(),
+            ],
+        ];
 
-        // Tax total
-        $taxAmount = new \Scalapay\Scalapay\Model\Merchant\Money();
-        $taxAmount->setAmount($order->getTotalTax());
+        try {
+            $apiResponse = $this->getClient()->post('orders', [
+                'json' => $data,
+            ]);
+        } catch (Exception $e) {
+            throw new PaymentException($e->getMessage());
+        }
 
-        // Shipping total
-        $shippingAmount = new \Scalapay\Scalapay\Model\Merchant\Money();
-        $shippingAmount->setAmount($order->getTotalShippingCost());
-
-        // Order detail
-        $orderDetails = new \Scalapay\Scalapay\Model\Merchant\OrderDetails();
-        $orderDetails->setConsumer($consumer);
-        $orderDetails->setBilling($billing);
-        $orderDetails->setShipping($shipping);
-        $orderDetails->setMerchant($merchantOptions);
-        $orderDetails->setItems($itemList);
-        $orderDetails->setTotalAmount($totalAmount);
-        $orderDetails->setShippingAmount($shippingAmount);
-        $orderDetails->setTaxAmount($taxAmount);
-        $orderDetails->setMerchantReference($transaction->hash);
-
-        // Create Scalapay order
-        $scalapayApi = new \Scalapay\Scalapay\Factory\Api();
-        $apiResponse = $scalapayApi->createOrder($authorization, $orderDetails);
-
-        return new ScalapayResponse([
-            'token' => $apiResponse->getToken(),
-            'expires' => $apiResponse->getExpires(),
-            'redirectUrl' => $apiResponse->getCheckoutUrl(),
+        $apiResponse = json_decode($apiResponse->getBody(), true) + [
+            'code' => $apiResponse->getStatusCode(),
             'transactionHash' => $transaction->hash,
-        ]);
+        ];
 
-        // $data = [
-        //     'email' => $order->email,
-        //     'firstname' => $billingAddress->firstName,
-        //     'lastname' => $billingAddress->lastName,
-        //     'amount' => $order->total * 100,
-        //     'city' => $billingAddress->city,
-        //     'address' => $billingAddress->address1,
-        //     'postalCode' => $billingAddress->zipCode,
-        //     'successUrl' => UrlHelper::url($order->returnUrl),
-        //     'errorUrl' => UrlHelper::url($order->cancelUrl),
-        //     'callbackUrl' => $this->getWebhookUrl(),
-        //     'orderReference' => $transaction->hash,
-        // ];
-
-        // try {
-        //     $apiResponse = $this->getClient()->post('orders', [
-        //         'json' => $data,
-        //     ]);
-        // } catch (Exception $e) {
-        //     throw new PaymentException($e->getMessage());
-        // }
-
-        // $apiResponse = json_decode($apiResponse->getBody(), true) + [
-        //     'code' => $apiResponse->getStatusCode(),
-        //     'transactionHash' => $transaction->hash,
-        // ];
-
-        // return new ScalapayResponse($apiResponse);
+        return new ScalapayResponse($apiResponse);
     }
 
     /**
@@ -431,6 +393,31 @@ class ScalapayGateway extends Gateway
     {
         $request = Craft::$app->request;
         $response = Craft::$app->getResponse();
+
+        Craft::dd($request);
+
+
+        // $token = $request->getQueryParam('orderToken');
+        // $status = $request->getQueryParam('status');
+
+        // if ($status !== 'success') {
+        //     throw new Exception("Something went wrong with Scalapay");
+        // }
+
+        // try {
+        //     $apiResponse = $this->getClient()->post('payments/capture', [
+        //         'json' => compact('token'),
+        //     ]);
+        // } catch (Exception $e) {
+        //     Craft::dd($e->getMessage());
+        // }
+
+        // $apiResponse = json_decode($apiResponse->getBody(), true);
+        // $orderNumber = $apiResponse['merchantReference'];
+
+
+
+
 
         $commerce = Commerce::getInstance();
         $transactionHash = $request->getBodyParam('orderReference');
@@ -502,7 +489,7 @@ class ScalapayGateway extends Gateway
 
     protected function translateEventMessage($message): string
     {
-        return Craft::t('commerce-scalapay', str_replace('%20', ' ', $message));
+        return Craft::t('craft-commerce-scalapay', str_replace('%20', ' ', $message));
     }
 
     protected function throwUnsupportedFunctionalityException()

@@ -49,7 +49,7 @@ class ScalapayResponse implements RequestResponseInterface
      */
     public function isRedirect(): bool
     {
-        return isset($this->data['redirectUrl']);
+        return isset($this->data['checkoutUrl']);
     }
 
     /**
@@ -79,7 +79,7 @@ class ScalapayResponse implements RequestResponseInterface
      */
     public function getRedirectUrl(): string
     {
-        return $this->data['redirectUrl'];
+        return $this->data['checkoutUrl'];
     }
 
     /**
