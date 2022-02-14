@@ -2,7 +2,7 @@
     "name": "logisticdesign/craft-commerce-scalapay",
     "description": "Scalapay payment gateway for Craft Commerce",
     "type": "craft-plugin",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "keywords": [
         "commerce",
         "craftcms",
