@@ -4,7 +4,7 @@ namespace logisticdesign\scalapay\responses;
 
 use craft\commerce\base\RequestResponseInterface;
 
-class ScalapayResponse implements RequestResponseInterface
+class ScalapayRefundResponse implements RequestResponseInterface
 {
     protected $data;
 
@@ -20,9 +20,7 @@ class ScalapayResponse implements RequestResponseInterface
      */
     public function isSuccessful(): bool
     {
-        $paymentStatus = strtolower($this->data['body']['status'] ?? '');
-
-        return $paymentStatus === 'approved';
+        return strlen($this->data['body']['refundedAt'] ?? '') > 0;
     }
 
     /**
@@ -42,7 +40,7 @@ class ScalapayResponse implements RequestResponseInterface
      */
     public function isRedirect(): bool
     {
-        return strlen($this->data['body']['checkoutUrl'] ?? '') > 0;
+        return false;
     }
 
     /**
@@ -72,7 +70,7 @@ class ScalapayResponse implements RequestResponseInterface
      */
     public function getRedirectUrl(): string
     {
-        return $this->data['body']['checkoutUrl'] ?? '';
+        return '';
     }
 
     /**
@@ -82,7 +80,7 @@ class ScalapayResponse implements RequestResponseInterface
      */
     public function getTransactionReference(): string
     {
-        return $this->data['body']['orderToken'] ?? $this->data['body']['token'] ?? '';
+        return $this->data['body']['orderToken'] ?? '';
     }
 
     /**

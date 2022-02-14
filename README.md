@@ -6,7 +6,7 @@ This plugin provides a [Scalapay](https://www.scalapay.com) integration for [Cra
 
 ## Requirements
 
-This plugin requires Craft 3.1.5 and Craft Commerce 2.0.0 or later.
+This plugin requires Craft 3.1.5 and Craft Commerce 3.0.0 or later.
 
 ## Installation
 
@@ -25,10 +25,10 @@ Open your terminal and run the following commands:
 cd /path/to/my-project.test
 
 # tell Composer to load the plugin
-composer require logisticdesign/commerce-scalapay
+composer require logisticdesign/craft-commerce-scalapay
 
 # tell Craft to install the plugin
-./craft plugin/install commerce-scalapay
+./craft plugin/install craft-commerce-scalapay
 ```
 
 ## Setup
@@ -37,5 +37,5 @@ To add a Scalapay payment gateway, go to Commerce → Settings → Gateways, cre
 
 For Sandbox authentication credentials please refer to [Scalapay documentation](https://developers.scalapay.com/docs/testing).
 
-> **Tip:** The Test Api Key and Live Api Key gateway settings can be set to environment variables. See [Environmental Configuration](https://docs.craftcms.com/v3/config/environments.html) in the Craft docs to learn more about that.
+> **Tip:** The Sandbox API Key and Live API Key gateway settings can be set to environment variables. See [Environmental Configuration](https://docs.craftcms.com/v3/config/environments.html) in the Craft docs to learn more about that.
 

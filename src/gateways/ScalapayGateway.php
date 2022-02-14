@@ -1,14 +1,5 @@
 <?php
 
-/**
- * Scalapay plugin for Craft CMS 3.x
- *
- * Scalapay payment gateway for Craft Commerce
- *
- * @link      https://logisticdesign.it
- * @copyright Copyright (c) 2021 Logistic Design srl
- */
-
 namespace logisticdesign\scalapay\gateways;
 
 use Craft;
@@ -24,20 +15,35 @@ use craft\commerce\models\PaymentSource;
 use craft\commerce\models\Transaction;
 use craft\commerce\Plugin as Commerce;
 use craft\commerce\records\Transaction as TransactionRecord;
+use craft\helpers\App;
 use craft\helpers\UrlHelper;
+use craft\web\Request;
 use craft\web\Response as WebResponse;
+use craft\web\View;
 use Exception;
 use GuzzleHttp\Client;
+use logisticdesign\scalapay\responses\ScalapayRefundResponse;
 use logisticdesign\scalapay\responses\ScalapayResponse;
 
 class ScalapayGateway extends Gateway
 {
+    // -------------------------------------------------------------------------
+    // PUBLIC PROPERTIES
+    // -------------------------------------------------------------------------
+
     /**
-     * Live Api Key
+     * Live API Key
      *
      * @var string
      */
     public $liveApiKey;
+
+    /**
+     * Sandbox API Key
+     *
+     * @var string
+     */
+    public $sandboxApiKey;
 
     /**
      * Sandbox mode enabled.
@@ -46,32 +52,38 @@ class ScalapayGateway extends Gateway
      */
     public $sandboxEnabled;
 
-    /**
-     * Test Api Key
-     *
-     * @var string
-     */
-    protected $testApiKey = 'qhtfs87hjnc12kkos';
+    // -------------------------------------------------------------------------
+    // CONSTANTS
+    // -------------------------------------------------------------------------
 
     /**
      * Live API Endpoint.
+     *
+     * @var string
      */
     CONST API_URL = 'https://api.scalapay.com';
 
     /**
      * Sandbox API Endpoint.
+     *
+     * @var string
      */
-    CONST SANDBOX_API_URL = 'https://staging.api.scalapay.com';
+    CONST SANDBOX_API_URL = 'https://integration.api.scalapay.com';
 
     /**
      * Minimum amount valid for order.
+     *
+     * @var integer
      */
-    const MIN_AMOUNT = 100;
+    const MIN_AMOUNT = 35;
 
     /**
      * Maximum amount valid for order.
+     * Deve essere concordato con Scalapay.
+     *
+     * @var integer
      */
-    const MAX_AMOUNT = 15000;
+    const MAX_AMOUNT = 600;
 
     /**
      * @inheritdoc
@@ -79,6 +91,14 @@ class ScalapayGateway extends Gateway
     public static function displayName(): string
     {
         return Craft::t('commerce', 'Scalapay');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getPaymentFormModel(): BasePaymentForm
+    {
+        return new OffsitePaymentForm;
     }
 
     /**
@@ -94,150 +114,32 @@ class ScalapayGateway extends Gateway
     /**
      * @inheritdoc
      */
-    public function getPaymentFormHtml(array $params)
+    public function getPaymentFormHtml(array $params = [])
     {
-        return null;
-    }
+        $view = Craft::$app->getView();
+        $previousMode = $view->getTemplateMode();
 
-    /**
-     * @inheritdoc
-     */
-    public function getPaymentFormModel(): BasePaymentForm
-    {
-        return new OffsitePaymentForm;
-    }
+        $view->setTemplateMode(View::TEMPLATE_MODE_CP);
 
-    /**
-     * Sandbox Mode is enabled?
-     *
-     * @return bool
-     */
-    public function isSandboxEnabled()
-    {
-        return !! $this->sandboxEnabled;
-    }
-
-    /**
-     * API Client.
-     *
-     * @return \GuzzleHttp\Client
-     */
-    public function getClient()
-    {
-        $apiKey = $this->isSandboxEnabled() ? $this->testApiKey : $this->liveApiKey;
-        $endpoint = $this->isSandboxEnabled() ? self::SANDBOX_API_URL : self::API_URL;
-
-        return new Client([
-            'base_uri' => "{$endpoint}/v2/",
-            'headers' => [
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-                'Authorization' => "Bearer {$apiKey}",
-            ],
+        $html = Craft::$app->getView()->renderTemplate('craft-commerce-scalapay/paymentForm', [
+            'params' => $params,
         ]);
+
+        $view->setTemplateMode($previousMode);
+
+        return $html;
     }
 
-    /**
-     * @inheritdoc
-     */
-    public function availableForUseWithOrder(Order $order): bool
-    {
-        if ( ! Craft::$app->request->getIsSiteRequest()) {
-            return false;
-        }
-
-        return $order->total >= self::MIN_AMOUNT and $order->total <= self::MAX_AMOUNT;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function authorize(Transaction $transaction, BasePaymentForm $form): RequestResponseInterface
-    {
-        return $this->createScalapayOrder($transaction);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function purchase(Transaction $transaction, BasePaymentForm $form): RequestResponseInterface
-    {
-        return $this->createScalapayOrder($transaction);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function capture(Transaction $transaction, string $reference): RequestResponseInterface
-    {
-        return new ScalapayResponse([
-            'success' => true,
-            'transactionHash' => $transaction->hash,
-        ]);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function completeAuthorize(Transaction $transaction): RequestResponseInterface
-    {
-        $this->throwUnsupportedFunctionalityException();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function completePurchase(Transaction $transaction): RequestResponseInterface
-    {
-        $this->throwUnsupportedFunctionalityException();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function createPaymentSource(BasePaymentForm $sourceData, int $userId): PaymentSource
-    {
-        $this->throwUnsupportedFunctionalityException();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function deletePaymentSource($token): bool
-    {
-        $this->throwUnsupportedFunctionalityException();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function refund(Transaction $transaction): RequestResponseInterface
-    {
-        $this->throwUnsupportedFunctionalityException();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function processWebHook(): WebResponse
-    {
-        return $this->handleScalapayCallback();
-    }
+    // -------------------------------------------------------------------------
+    // SUPPORTS
+    // -------------------------------------------------------------------------
 
     /**
      * @inheritdoc
      */
     public function supportsAuthorize(): bool
     {
-        return true;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function supportsCapture(): bool
-    {
-        return true;
+        return false;
     }
 
     /**
@@ -251,15 +153,7 @@ class ScalapayGateway extends Gateway
     /**
      * @inheritdoc
      */
-    public function supportsCompletePurchase(): bool
-    {
-        return false;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function supportsPaymentSources(): bool
+    public function supportsCapture(): bool
     {
         return false;
     }
@@ -270,6 +164,22 @@ class ScalapayGateway extends Gateway
     public function supportsPurchase(): bool
     {
         return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function supportsCompletePurchase(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function supportsPaymentSources(): bool
+    {
+        return false;
     }
 
     /**
@@ -293,15 +203,251 @@ class ScalapayGateway extends Gateway
      */
     public function supportsWebhooks(): bool
     {
-        return true;
+        return false;
     }
 
+    // -------------------------------------------------------------------------
+    // PUBLIC METHODS
+    // -------------------------------------------------------------------------
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // -----------------------------------------------------------------------------------------------------------------
+    /**
+     * Sandbox Mode is enabled?
+     *
+     * @return bool
+     */
+    public function isSandboxEnabled()
+    {
+        return !! $this->sandboxEnabled;
+    }
 
+    /**
+     * API Key
+     *
+     * @return string
+     */
+    public function getApiKey()
+    {
+        return App::parseEnv(
+            $this->isSandboxEnabled() ? $this->sandboxApiKey : $this->liveApiKey
+        );
+    }
 
+    /**
+     * API Endpoint
+     *
+     * @return string
+     */
+    public function getApiEndpoint()
+    {
+        $endpoint = $this->isSandboxEnabled() ? self::SANDBOX_API_URL : self::API_URL;
+
+        return "{$endpoint}/v2/";
+    }
+
+    /**
+     * API Client.
+     *
+     * @return \GuzzleHttp\Client
+     */
+    public function getClient()
+    {
+        return new Client([
+            'base_uri' => $this->getApiEndpoint(),
+            'headers' => [
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $this->getApiKey(),
+            ],
+        ]);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function availableForUseWithOrder(Order $order): bool
+    {
+        if ( ! Craft::$app->getRequest()->getIsSiteRequest()) {
+            return false;
+        }
+
+        return $order->total >= self::MIN_AMOUNT and $order->total <= self::MAX_AMOUNT;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function authorize(Transaction $transaction, BasePaymentForm $form): RequestResponseInterface
+    {
+        $this->throwUnsupportedFunctionalityException();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function completeAuthorize(Transaction $transaction): RequestResponseInterface
+    {
+        $this->throwUnsupportedFunctionalityException();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function capture(Transaction $transaction, string $reference): RequestResponseInterface
+    {
+        $this->throwUnsupportedFunctionalityException();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function purchase(Transaction $transaction, BasePaymentForm $form): RequestResponseInterface
+    {
+        return $this->createScalapayOrder($transaction);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function completePurchase(Transaction $transaction): RequestResponseInterface
+    {
+        $request = Craft::$app->getRequest();
+
+        $token = $request->getQueryParam('orderToken');
+        $status = strtolower($request->getQueryParam('status'));
+
+        if ($status === 'success' and $transaction->reference === $token) {
+            return $this->capturePayment($token, $transaction);
+        }
+
+        return new ScalapayResponse([]);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function createPaymentSource(BasePaymentForm $sourceData, int $userId): PaymentSource
+    {
+        $this->throwUnsupportedFunctionalityException();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function deletePaymentSource($token): bool
+    {
+        $this->throwUnsupportedFunctionalityException();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function refund(Transaction $transaction): RequestResponseInterface
+    {
+        $request = Craft::$app->getRequest();
+        $parentTransaction = $transaction->getParent();
+
+        if ( ! $parentTransaction) {
+            throw new PaymentException('Cannot retrieve parent transaction');
+        }
+
+        if ($parentTransaction->status !== TransactionRecord::STATUS_SUCCESS) {
+            return new ScalapayRefundResponse([]);
+        }
+
+        $orderToken = $parentTransaction->reference;
+        $refundAmount = $request->getBodyParam('amount');
+
+        try {
+            $response = $this->getClient()->post("payments/{$orderToken}/refund", [
+                'json' => [
+                    'merchantReference' => $parentTransaction->hash,
+                    'refundAmount' => [
+                        'amount' => $refundAmount,
+                        'currency' => $parentTransaction->currency,
+                    ],
+                ],
+            ]);
+
+        } catch (Exception $e) {
+            throw new PaymentException($e->getMessage());
+        }
+
+        return new ScalapayRefundResponse([
+            'body' => json_decode($response->getBody(), true),
+            'status' => 'refund_request',
+            'message' => 'Refund request sent to Scalapay',
+        ]);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function processWebHook(): WebResponse
+    {
+        // @todo Process refund requests from Scalapay merchant panel.
+        // return $this->handleWebhookRequest();
+    }
+
+    // -------------------------------------------------------------------------
+    // PROTECTED METHODS
+    // -------------------------------------------------------------------------
+
+    /**
+     * Create Scalapay order.
+     *
+     * @param Transaction $transaction
+     * @return RequestResponseInterface
+     */
     protected function createScalapayOrder(Transaction $transaction): RequestResponseInterface
+    {
+        try {
+            $response = $this->getClient()->post('orders', [
+                'json' => $this->orderBody($transaction),
+            ]);
+
+        } catch (Exception $e) {
+            throw new PaymentException($e->getMessage());
+        }
+
+        return new ScalapayResponse([
+            'body' => json_decode($response->getBody(), true),
+            'status' => 'created',
+            'message' => 'Scalapay: Order created',
+        ]);
+    }
+
+    /**
+     * Capture the payment and finalize the order.
+     *
+     * @param string $token
+     * @param Transaction $transaction
+     * @return RequestResponseInterface
+     */
+    protected function capturePayment(string $token, Transaction $transaction): RequestResponseInterface
+    {
+        try {
+            $response = $this->getClient()->post('payments/capture', [
+                'json' => compact('token'),
+            ]);
+
+        } catch (Exception $e) {
+            throw new PaymentException($e->getMessage());
+        }
+
+        return new ScalapayResponse([
+            'body' => json_decode($response->getBody(), true),
+            'status' => 'charged',
+            'message' => 'Scalapay: Payment captured',
+        ]);
+    }
+
+    /**
+     * Body of create order request.
+     *
+     * @param Transaction $transaction
+     * @return array
+     */
+    protected function orderBody(Transaction $transaction): array
     {
         $order = $transaction->getOrder();
         $billingAddress = $order->getBillingAddress();
@@ -309,6 +455,10 @@ class ScalapayGateway extends Gateway
 
         $billingName = $billingAddress->businessName ?: "{$billingAddress->firstName} {$billingAddress->lastName}";
         $shippingName = $shippingAddress->businessName ?: "{$shippingAddress->firstName} {$shippingAddress->lastName}";
+
+        $redirectConfirm = UrlHelper::actionUrl('commerce/payments/complete-payment', [
+            'commerceTransactionHash' => $transaction->hash,
+        ]);
 
         $items = [];
 
@@ -333,8 +483,7 @@ class ScalapayGateway extends Gateway
         }
 
         $data = [
-            'merchantReference' => $order->number,
-
+            'merchantReference' => $transaction->hash,
             'totalAmount' => [
                 'amount' => strval($order->total),
                 'currency' => $order->currency,
@@ -362,138 +511,101 @@ class ScalapayGateway extends Gateway
             ],
             'items' => $items,
             'merchant' => [
-                'redirectCancelUrl' => UrlHelper::url($order->cancelUrl),
-                'redirectConfirmUrl' => $this->getWebhookUrl(),
+                'redirectCancelUrl' => $order->cancelUrl,
+                'redirectConfirmUrl' => UrlHelper::siteUrl($redirectConfirm),
             ],
         ];
 
+        return $data;
+    }
+
+    /**
+     * Throw an unsupported functionality exception.
+     *
+     * @throws NotImplementedException
+     */
+    protected function throwUnsupportedFunctionalityException()
+    {
+        throw new NotImplementedException(Craft::t('commerce', 'This gateway does not support that functionality.'));
+    }
+
+    // -------------------------------------------------------------------------
+    // WEBHOOK METHODS
+    // -------------------------------------------------------------------------
+
+    /**
+     * Handle webhook request.
+     *
+     * @return WebResponse
+     */
+    protected function handleWebhookRequest(): WebResponse
+    {
+        $response = Craft::$app->getResponse();
+
+        $request = Craft::$app->getRequest();
+        $requestStatus = $request->getBodyParam('status');
+        $transactionHash = $request->getBodyParam('merchantReference');
+
+        if ( ! $this->validWebhookRequest($request) or $requestStatus !== 'refunded') {
+            return $response;
+        }
+
+        $commerce = Commerce::getInstance();
+        $transaction = $commerce->getTransactions()->getTransactionByHash($transactionHash);
+
+        // Avoid processing the refunds made by the order.
+        if ($transaction->status === TransactionRecord::STATUS_SUCCESS) {
+            return $response;
+        }
+
+        // Check to see if the successful transaction can be refunded.
+        if ($transaction and ! $transaction->canRefund()) {
+            Craft::warning('Transaction with the hash "'.$transaction->hash.'" cannot be refunded.', 'scalapay');
+        }
+
+        // Create refund transaction.
+        $refundAmount = $request->getBodyParam('refundAmount', 0);
+
         try {
-            $apiResponse = $this->getClient()->post('orders', [
-                'json' => $data,
-            ]);
+            $child = $commerce->getPayments()->refundTransaction($transaction, $refundAmount);
+
+            if ($child->status == TransactionRecord::STATUS_SUCCESS) {
+                $child->order->updateOrderPaidInformation();
+            }
+
         } catch (Exception $e) {
             throw new PaymentException($e->getMessage());
         }
 
-        $apiResponse = json_decode($apiResponse->getBody(), true) + [
-            'code' => $apiResponse->getStatusCode(),
-            'transactionHash' => $transaction->hash,
-        ];
-
-        return new ScalapayResponse($apiResponse);
-    }
-
-    /**
-     * Handle callback http request.
-     *
-     * @todo Handle partial payments on LoanWasDisbursed.
-     * @return WebResponse
-     */
-    protected function handleScalapayCallback(): WebResponse
-    {
-        $request = Craft::$app->request;
-        $response = Craft::$app->getResponse();
-
-        Craft::dd($request);
-
-
-        // $token = $request->getQueryParam('orderToken');
-        // $status = $request->getQueryParam('status');
-
-        // if ($status !== 'success') {
-        //     throw new Exception("Something went wrong with Scalapay");
-        // }
-
-        // try {
-        //     $apiResponse = $this->getClient()->post('payments/capture', [
-        //         'json' => compact('token'),
-        //     ]);
-        // } catch (Exception $e) {
-        //     Craft::dd($e->getMessage());
-        // }
-
-        // $apiResponse = json_decode($apiResponse->getBody(), true);
-        // $orderNumber = $apiResponse['merchantReference'];
-
-
-
-
-
-        $commerce = Commerce::getInstance();
-        $transactionHash = $request->getBodyParam('orderReference');
-        $transactionService = $commerce->getTransactions();
-
-        $transaction = $transactionService->getTransactionByHash($transactionHash);
-
-        // Check to see if the transaction exists.
-        if ( ! $transaction) {
-            Craft::warning('Transaction with the hash "'.$transactionHash.'" not found.', 'scalapay');
-
-            return $response;
-        }
-
-        // Check to see if a successful purchase child transaction already exists.
-        $successfulChildTransaction = TransactionRecord::find()->where([
-            'status' => TransactionRecord::STATUS_SUCCESS,
-            'parentId' => $transaction->id,
-        ])->one();
-
-        if ($successfulChildTransaction) {
-            Craft::warning('Successful child transaction for "'.$transactionHash.'" already exists.', 'scalapay');
-
-            return $response;
-        }
-
-        // Ensure that the order was marked as completed.
-        if ( ! $transaction->order->isCompleted) {
-            $transaction->order->markAsComplete();
-        }
-
-        $eventId = $request->getBodyParam('eventId');
-        $childTransaction = $transactionService->createTransaction(null, $transaction, $transaction->type);
-
-        switch ($eventId) {
-            case 'LoanWasApproved':
-            case 'RequestCompleted':
-                $childTransaction->status = TransactionRecord::STATUS_PENDING;
-                break;
-
-            case 'LoanWasVerified':
-                $childTransaction->status = TransactionRecord::STATUS_PROCESSING;
-                break;
-
-            case 'LoanWasDisbursed':
-                $childTransaction->status = TransactionRecord::STATUS_SUCCESS;
-
-                // Waiting a new Craft Commerce 3.x release that handle partial payments.
-                // PR: https://github.com/craftcms/commerce/pull/1903
-
-                // $paymentAmount = (int) $request->getBodyParam('amount');
-                // $childTransaction->amount = $paymentAmount / 100;
-                break;
-
-            case 'UserWasRejected':
-                $childTransaction->status = TransactionRecord::STATUS_FAILED;
-                break;
-        }
-
-        $childTransaction->code = $eventId;
-        $childTransaction->message = $this->translateEventMessage($request->getBodyParam('eventMessage'));
-        $childTransaction->response = $request->getBodyParams();
-        $childTransaction->reference = $request->getBodyParam('orderToken');
-
-        $transactionService->saveTransaction($childTransaction);
-
         return $response;
     }
 
-    protected function translateEventMessage($message): string
+    /**
+     * Create request validation signature.
+     *
+     * @param Request $request
+     * @return string
+     */
+    protected function createSignature(Request $request): string
     {
-        return Craft::t('craft-commerce-scalapay', str_replace('%20', ' ', $message));
+        $payload = json_encode($request->getBodyParams());
+        $timestamp = $request->getHeaders()->get('x-scalapay-timestamp');
+
+        $raw = sprintf('%s:%s:%s', 'V1', $timestamp, $payload);
+
+        return hash_hmac('sha256', $raw, $this->getApiKey());
     }
 
-    protected function throwUnsupportedFunctionalityException()
+    /**
+     * Check if webhook request is valid.
+     *
+     * @param Request $request
+     * @return boolean
+     */
+    protected function validWebhookRequest(Request $request): bool
     {
-        throw new NotImplementedException(Craft::t('commerce', 'This gateway does not support that functionality.'));
+        $scalapaySignature = $request->getHeaders()->get('x-scalapay-hmac-v1');
+
+        return $this->createSignature($request) === $scalapaySignature;
     }
 }

@@ -8,6 +8,16 @@
 }) }}
 
 {{ autosuggestField({
+    label: 'Sandbox API Key'|t('commerce'),
+    id: 'sandboxApiKey',
+    class: 'ltr',
+    name: 'sandboxApiKey',
+    suggestEnvVars: true,
+    value: gateway.sandboxApiKey,
+    errors: gateway.getErrors('sandboxApiKey')
+}) }}
+
+{{ autosuggestField({
     label: 'Live API Key'|t('commerce'),
     id: 'liveApiKey',
     class: 'ltr',

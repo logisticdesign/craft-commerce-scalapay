@@ -1,12 +1,4 @@
 <?php
-/**
- * Scalapay plugin for Craft CMS 3.x
- *
- * Scalapay payment gateway for Craft Commerce
- *
- * @link      https://logisticdesign.it
- * @copyright Copyright (c) 2021 Logistic Design srl
- */
 
 namespace logisticdesign\scalapay;
 

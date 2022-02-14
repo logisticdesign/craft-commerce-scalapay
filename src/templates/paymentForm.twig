@@ -1,0 +1,11 @@
+<form method="POST" id="scalapay-payment-form" {{ attr(params.formAttributes ?? {}) }}>
+    {{ csrfInput() }}
+    {{ actionInput('commerce/payments/pay') }}
+    {{ redirectInput(params.redirectUrl ?? '/commerce/customer/order?number={number}') }}
+
+    {{ hiddenInput('cancelUrl', params.cancelUrl ?? '/commerce/checkout/payment'|hash) }}
+
+    <button id="scalapay-payment-submit" type="submit" {{ attr(params.buttonAttributes ?? {}) }}>
+        {{ params.buttonText ?? 'Pay Now'|t }}
+    </button>
+</form>
