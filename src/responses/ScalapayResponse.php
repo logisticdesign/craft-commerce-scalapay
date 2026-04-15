@@ -15,14 +15,15 @@ class ScalapayResponse implements RequestResponseInterface
 
     /**
      * Returns whether or not the payment was successful.
+     * Covers both immediate capture ("APPROVED") and delayed capture ("AUTHORIZED").
      *
      * @return bool
      */
     public function isSuccessful(): bool
     {
-        $paymentStatus = strtolower($this->data['body']['status'] ?? '');
+        $paymentStatus = strtoupper($this->data['body']['status'] ?? '');
 
-        return $paymentStatus === 'approved';
+        return in_array($paymentStatus, ['APPROVED', 'AUTHORIZED']);
     }
 
     /**

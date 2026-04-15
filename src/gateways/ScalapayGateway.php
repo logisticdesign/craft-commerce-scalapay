@@ -139,7 +139,7 @@ class ScalapayGateway extends Gateway
      */
     public function supportsAuthorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -147,7 +147,7 @@ class ScalapayGateway extends Gateway
      */
     public function supportsCompleteAuthorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -155,7 +155,7 @@ class ScalapayGateway extends Gateway
      */
     public function supportsCapture(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -278,7 +278,7 @@ class ScalapayGateway extends Gateway
      */
     public function authorize(Transaction $transaction, BasePaymentForm $form): RequestResponseInterface
     {
-        $this->throwUnsupportedFunctionalityException();
+        return $this->createScalapayOrder($transaction);
     }
 
     /**
@@ -286,7 +286,16 @@ class ScalapayGateway extends Gateway
      */
     public function completeAuthorize(Transaction $transaction): RequestResponseInterface
     {
-        $this->throwUnsupportedFunctionalityException();
+        $request = Craft::$app->getRequest();
+
+        $token = $request->getQueryParam('orderToken');
+        $status = strtolower($request->getQueryParam('status'));
+
+        if ($status === 'success' and $transaction->reference === $token) {
+            return $this->delayPayment($token, $transaction);
+        }
+
+        return new ScalapayResponse([]);
     }
 
     /**
@@ -294,7 +303,7 @@ class ScalapayGateway extends Gateway
      */
     public function capture(Transaction $transaction, string $reference): RequestResponseInterface
     {
-        $this->throwUnsupportedFunctionalityException();
+        return $this->capturePayment($reference, $transaction);
     }
 
     /**
@@ -438,6 +447,32 @@ class ScalapayGateway extends Gateway
             'body' => json_decode($response->getBody(), true),
             'status' => 'charged',
             'message' => 'Scalapay: Payment captured',
+        ]);
+    }
+
+    /**
+     * Notify Scalapay of the delayed capture request.
+     * Funds remain unsettled until an explicit capture is issued.
+     *
+     * @param string $token
+     * @param Transaction $transaction
+     * @return RequestResponseInterface
+     */
+    protected function delayPayment(string $token, Transaction $transaction): RequestResponseInterface
+    {
+        try {
+            $response = $this->getClient()->post("payments/{$token}/delay");
+
+        } catch (Exception $e) {
+            throw new PaymentException($e->getMessage());
+        }
+
+        $body = json_decode($response->getBody(), true);
+
+        return new ScalapayResponse([
+            'body' => $body,
+            'status' => 'authorized',
+            'message' => 'Scalapay: Payment authorized, pending manual capture',
         ]);
     }
 

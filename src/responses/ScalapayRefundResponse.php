@@ -80,7 +80,7 @@ class ScalapayRefundResponse implements RequestResponseInterface
      */
     public function getTransactionReference(): string
     {
-        return $this->data['body']['orderToken'] ?? '';
+        return $this->data['body']['orderToken'] ?? $this->data['body']['token'] ?? '';
     }
 
     /**
